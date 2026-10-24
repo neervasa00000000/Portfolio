@@ -8,3 +8,15 @@ function bind(){document.querySelectorAll('[data-process]').forEach(b=>b.onclick
 document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>select(b.dataset.open,!b.closest('.tabs')));document.querySelector('#motion').onclick=e=>{const q=document.body.classList.toggle('quiet');e.target.textContent=q?'Motion off':'Motion on';e.target.setAttribute('aria-pressed',q)};if(matchMedia('(prefers-reduced-motion:reduce)').matches){document.body.classList.add('quiet');document.querySelector('#motion').textContent='Motion off'}select('privacy');
 
 function openProjectHash(){const id=location.hash.slice(1);const el=document.getElementById(id);if(el?.tagName==='DETAILS'){el.open=true;el.scrollIntoView({block:'start'})}}addEventListener('hashchange',openProjectHash);openProjectHash();
+
+// Animate page continuity without hiding content when JavaScript is unavailable.
+const reducedMotion=()=>document.body.classList.contains('quiet')||matchMedia('(prefers-reduced-motion: reduce)').matches;
+const progress=document.createElement('div');progress.id='read-progress';progress.setAttribute('aria-hidden','true');document.body.append(progress);
+let scrollFrame=false;function updateScroll(){const max=document.documentElement.scrollHeight-innerHeight;progress.style.width=(max>0?scrollY/max*100:0)+'%';document.querySelector('header').classList.toggle('scrolled',scrollY>30);scrollFrame=false}addEventListener('scroll',()=>{if(!scrollFrame){scrollFrame=true;requestAnimationFrame(updateScroll)}},{passive:true});updateScroll();
+if(!reducedMotion()){
+ const observer=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('is-visible');observer.unobserve(e.target)}}),{threshold:.08});
+ document.querySelectorAll('.all-work h2,.project-list details,.research-grid article,.research-study,.publications,.timeline article,.about-columns>div,.contact-full h2').forEach(el=>{el.classList.add('reveal-ready');observer.observe(el)});
+ document.querySelectorAll('.meta,.preface,.intro h1,.intro-foot').forEach((el,i)=>el.animate([{opacity:0,transform:'translateY(18px)'},{opacity:1,transform:'translateY(0)'}],{duration:800,delay:i*100,easing:'cubic-bezier(.22,1,.36,1)',fill:'backwards'}));
+}
+// Native details retain keyboard semantics; height animation smooths expansion.
+document.querySelectorAll('.project-list details').forEach(detail=>{const summary=detail.querySelector('summary');let running=null;summary.addEventListener('click',e=>{if(reducedMotion())return;e.preventDefault();if(running)return;const opening=!detail.open;const start=detail.offsetHeight;const closed=summary.offsetHeight;if(opening)detail.open=true;const end=opening?detail.offsetHeight:closed;detail.style.overflow='hidden';running=detail.animate({height:[start+'px',end+'px']},{duration:420,easing:'cubic-bezier(.22,1,.36,1)'});running.onfinish=()=>{if(!opening)detail.open=false;detail.style.overflow='';running=null;updateScroll()};running.oncancel=()=>{detail.style.overflow='';running=null}})});
