@@ -20,3 +20,31 @@ if(!reducedMotion()){
 }
 // Native details retain keyboard semantics; height animation smooths expansion.
 document.querySelectorAll('.project-list details').forEach(detail=>{const summary=detail.querySelector('summary');let running=null;summary.addEventListener('click',e=>{if(reducedMotion())return;e.preventDefault();if(running)return;const opening=!detail.open;const start=detail.offsetHeight;const closed=summary.offsetHeight;if(opening)detail.open=true;const end=opening?detail.offsetHeight:closed;detail.style.overflow='hidden';running=detail.animate({height:[start+'px',end+'px']},{duration:420,easing:'cubic-bezier(.22,1,.36,1)'});running.onfinish=()=>{if(!opening)detail.open=false;detail.style.overflow='';running=null;updateScroll()};running.oncancel=()=>{detail.style.overflow='';running=null}})});
+
+// A small 3D renderer: depth-sorted torus surfaces, lit in world space.
+(()=>{
+ const canvas=document.querySelector('#engine');if(!canvas)return;const ctx=canvas.getContext('2d');if(!ctx)return;
+ let width=0,height=0,angle=0,pitch=-.35,yaw=.25,paused=false,apart=false,spread=0,mood=0,visible=true,drag=null,last=0;
+ const themes=[[[255,123,94],[212,232,177],[232,208,239]],[[179,193,255],[247,204,112],[231,230,207]],[[245,164,204],[156,218,211],[253,145,103]]];
+ const rotate=(p,rx,ry,rz)=>{let[x,y,z]=p;let c=Math.cos(rx),s=Math.sin(rx);[y,z]=[y*c-z*s,y*s+z*c];c=Math.cos(ry);s=Math.sin(ry);[x,z]=[x*c+z*s,-x*s+z*c];c=Math.cos(rz);s=Math.sin(rz);return[x*c-y*s,x*s+y*c,z]};
+ const project=p=>{const scale=width*.0034/(1+spread*.55);const perspective=650/(650+p[2]);return[width/2+p[0]*scale*perspective,height*.48+p[1]*scale*perspective]};
+ function resize(){const box=canvas.getBoundingClientRect();width=box.width;height=box.height;const ratio=Math.min(devicePixelRatio||1,1.5);canvas.width=width*ratio;canvas.height=height*ratio;ctx.setTransform(ratio,0,0,ratio,0,0);draw()}
+ function draw(){if(!width)return;ctx.clearRect(0,0,width,height);const faces=[];const N=72,M=24;const colors=themes[mood];
+  // Ground shadow anchors the floating object.
+  ctx.save();ctx.translate(width/2,height*.86);ctx.scale(1,.15);const shadow=ctx.createRadialGradient(0,0,1,0,0,width*.25);shadow.addColorStop(0,'#110c1688');shadow.addColorStop(1,'#110c1600');ctx.fillStyle=shadow;ctx.beginPath();ctx.arc(0,0,width*.25,0,Math.PI*2);ctx.fill();ctx.restore();
+  for(let ring=0;ring<3;ring++){
+   const vertices=[];const ringAngle=ring*Math.PI/3;const offsets=[[-38,-7,0],[22,9,8],[0,-30,-8]][ring];
+   for(let i=0;i<N;i++){vertices[i]=[];const u=i/N*Math.PI*2;for(let j=0;j<M;j++){const v=j/M*Math.PI*2;const R=74,r=18;let p=[(R+r*Math.cos(v))*Math.cos(u),(R+r*Math.cos(v))*Math.sin(u),r*Math.sin(v)];p=rotate(p,.75+ring*.65,ringAngle,ring*.45);p=p.map((x,k)=>x+offsets[k]*(.4+spread*2));vertices[i][j]=rotate(p,pitch+Math.sin(angle*.3)*.12,yaw+angle,.18)}}
+   for(let i=0;i<N;i++)for(let j=0;j<M;j++){const points=[vertices[i][j],vertices[(i+1)%N][j],vertices[(i+1)%N][(j+1)%M],vertices[i][(j+1)%M]];const a=points[0],b=points[1],c=points[2];const ab=b.map((x,k)=>x-a[k]),ac=c.map((x,k)=>x-a[k]);let normal=[ab[1]*ac[2]-ab[2]*ac[1],ab[2]*ac[0]-ab[0]*ac[2],ab[0]*ac[1]-ab[1]*ac[0]];const len=Math.hypot(...normal)||1;normal=normal.map(x=>x/len);const light=Math.max(0,normal[0]*-.35+normal[1]*-.6+normal[2]*-.7);const highlight=Math.pow(Math.max(0,normal[0]*-.2+normal[1]*-.5-normal[2]*.84),22)*65;const shade=.36+.64*light;const rgb=colors[ring].map(x=>Math.min(255,Math.round(x*shade+highlight)));faces.push({points,z:points.reduce((n,p)=>n+p[2],0)/4,color:`rgb(${rgb})`})}
+  }
+  faces.sort((a,b)=>b.z-a.z);for(const f of faces){ctx.beginPath();f.points.forEach((p,i)=>{const[x,y]=project(p);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath();ctx.fillStyle=f.color;ctx.fill();ctx.strokeStyle=f.color;ctx.lineWidth=.65;ctx.stroke()}
+  // Small orbiting reference points make depth and movement easier to read.
+  const p=rotate([120,18,35],pitch,yaw+angle,.18),q=project(p);ctx.beginPath();ctx.arc(q[0],q[1],4,0,Math.PI*2);ctx.fillStyle='#d4e8b1';ctx.fill();
+ }
+ function tick(time){if(time-last>30){last=time;const still=reducedMotion();if(visible){if(!paused&&!still&&!drag)angle+=.006;spread+=(Number(apart)-spread)*.075;if(!still||Math.abs(Number(apart)-spread)>.001)draw()}}requestAnimationFrame(tick)}
+ new ResizeObserver(resize).observe(canvas);new IntersectionObserver(e=>{visible=e[0].isIntersecting}).observe(canvas);
+ canvas.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')return;drag={x:e.clientX,y:e.clientY,yaw,pitch};canvas.setPointerCapture(e.pointerId)});canvas.addEventListener('pointermove',e=>{if(!drag)return;yaw=drag.yaw+(e.clientX-drag.x)*.012;pitch=drag.pitch+(e.clientY-drag.y)*.009;draw()});const end=()=>drag=null;canvas.addEventListener('pointerup',end);canvas.addEventListener('pointercancel',end);
+ document.querySelector('#scatter').onclick=e=>{apart=!apart;e.currentTarget.setAttribute('aria-pressed',apart);e.currentTarget.textContent=apart?'Bring it together ↙':'Pull it apart ↗';if(reducedMotion()){spread=Number(apart);draw()}};
+ document.querySelector('#palette').onclick=()=>{mood=(mood+1)%themes.length;draw()};document.querySelector('#spin').onclick=e=>{paused=!paused;e.currentTarget.setAttribute('aria-pressed',paused);e.currentTarget.textContent=paused?'Resume rotation ↻':'Pause rotation Ⅱ'};
+ document.querySelector('#motion').addEventListener('click',draw);resize();requestAnimationFrame(tick);
+})();
